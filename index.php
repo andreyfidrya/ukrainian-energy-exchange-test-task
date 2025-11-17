@@ -21,7 +21,7 @@ if ( ! isset( $submit_action ) ) {
 	$company_shortname_ukr = 'ТОВ "ТЕСТ"';
 	$company_shortname_eng = '"TEST" Co Ltd';
 	$company_constituent_doc = 'статуту';
-	$company_ownership_form = 'колективна';
+	$company_ownership_form = 'Державна';
 	$company_legal_address_code = '01001';
 	$company_legal_address_country = 'Україна';
 	$company_legal_address_oblast = 'Київська';
@@ -174,13 +174,16 @@ $info_text3 = 'Будь ласка, відкорегуйте поля анкет
 
 						$newcard_field_arr = array( 'company_info', 'bank_details1', 'ceo_info', 'agent_info1', 'documents_list' );
 						$bank_details_headers = array( 'bank_details1', 'bank_details2', 'bank_details3' );
-						$bank_details_footers = array( 'bank_code1', 'bank_code2', 'bank_code3' );
+						$bank_details_footers = array( 'banking_account1', 'banking_account2', 'banking_account3' );
 						$agent_info_headers = get_agent_info_headers();
 						$agent_info_footers = $agent_docs = get_agent_docs();
 
 						// *** Вывод полей формы
 						$fcount = $doc_num = 0;
+						
 						$query_form = mysqli_query($mysqli, "SELECT * FROM inputs_$type ORDER BY ord ASC" );
+						$row_form = mysqli_fetch_assoc( $query_form );						
+						
 						while ( $row_form = mysqli_fetch_assoc( $query_form ) ) {
 						$fcount++;
 						$backend_info = false;
@@ -472,6 +475,7 @@ $info_text3 = 'Будь ласка, відкорегуйте поля анкет
 </div> <!-- end form-wrapper -->
 
 <script src="/js/form_check.js"></script>
+
 </body>
 
 </html>

@@ -8,32 +8,115 @@ $db = false;
 $_db_rows = array();
 $type = isset( $_POST['registration_type'] ) ? $_POST['registration_type'] : 'exch';
 
-$query = mysql_query( "SELECT `fieldtype`, `mandatory`, `name`, `regexp` FROM `inputs_$type`" );
-while ( $_row = mysql_fetch_assoc( $query ) ) {
-	$key = $_row['name'];
-	if ( isset( $_POST[ $key ] ) ) {
-		$val = $_POST[ $key ];
-		$_row['fieldtype'] = (int) $_row['fieldtype'];
-		if ( in_array( $_row['fieldtype'], [1, 2, 3, 4, 6], true ) ) {
-			if ( $_row['fieldtype'] === 4 ) {
-				$val = is_array( $val ) ? implode( ',', $val ) : '';
-			}
-			$val = clear_hyphen( str_replace( '’', "'", stripslashes( strip_tags( trim( $val ) ) ) ) );
+$query = mysqli_query($mysqli, "SELECT `fieldtype`, `mandatory`, `name`, `regexp` FROM `inputs_$type`" );
 
-			if ( $val == '' && $_row['mandatory'] ) {
-				$_backend_failed[] = $key;
-				continue;
-			}
+function validateUAIBAN($iban) {
+    $iban = str_replace([' ', '-'], '', strtoupper($iban));
 
-			$_db_rows[ $_row['name'] ] = $val;
-		}
-	}
+    // Проверяем длину и префикс
+    if (strlen($iban) !== 29 || substr($iban, 0, 2) !== 'UA') {
+        return false;
+    }
+
+    // Переносим первые 4 символа в конец
+    $iban_rearranged = substr($iban, 4) . substr($iban, 0, 4);
+
+    // Преобразуем буквы в числа (A=10, B=11, ... Z=35)
+    $numeric_iban = '';
+    for ($i = 0; $i < strlen($iban_rearranged); $i++) {
+        $char = $iban_rearranged[$i];
+        if (ctype_alpha($char)) {
+            $numeric_iban .= (ord($char) - 55);
+        } else {
+            $numeric_iban .= $char;
+        }
+    }
+
+    // Проверяем контрольное число (mod 97)
+    $remainder = intval(substr($numeric_iban, 0, 1));
+    for ($i = 1; $i < strlen($numeric_iban); $i++) {
+        $remainder = ($remainder * 10 + intval($numeric_iban[$i])) % 97;
+    }
+
+    return $remainder === 1;
+}
+
+while ( $_row = mysqli_fetch_assoc( $query ) ) {
+    $key = $_row['name'];
+    if ( isset( $_POST[ $key ] ) ) {
+        $val = $_POST[ $key ];
+        $_row['fieldtype'] = (int) $_row['fieldtype'];
+
+        if ( in_array( $_row['fieldtype'], [1, 2, 3, 4, 6], true ) ) {
+
+            if ( $_row['fieldtype'] === 4 ) {
+                $val = is_array( $val ) ? implode( ',', $val ) : '';
+            }
+
+            $val = clear_hyphen( str_replace( '’', "'", stripslashes( strip_tags( trim( $val ) ) ) ) );
+
+            // Проверка обязательных полей
+            if ( $val === '' && $_row['mandatory'] ) {
+                $_backend_failed[] = $key;
+                continue;
+            }
+
+            // Проверка IBAN для поля "Поточний рахунок"
+            if (preg_match('/^banking_account[0-9]+$/', $key)) {
+                if ($val !== '' && !validateUAIBAN($val)) {
+                    $_backend_failed[] = $key;
+                    continue;
+                }
+            }
+
+            // Проверка регулярного выражения из БД (если задано)
+            if (!empty($_row['regexp'])) {
+                $pattern_raw = trim($_row['regexp']);
+                $val = trim($val);
+
+                // Пропускаем пустые поля, если они не обязательные
+                if ($val === '' && empty($_row['mandatory'])) {
+                    // например, скрытые или необязательные поля — не валидируем
+                    continue;
+                }
+
+                // Добавляем слэши, если их нет
+                if ($pattern_raw[0] !== '/' && substr($pattern_raw, -1) !== '/') {
+                    $pattern = '/' . $pattern_raw . '/u';
+                } else {
+                    $pattern = $pattern_raw;
+                }
+
+                // Проверяем корректность регулярки
+                $is_valid_pattern = @preg_match($pattern, '') !== false;
+
+                if ($is_valid_pattern) {
+                    // Проверяем значение по шаблону
+                    if ($val !== '' && !preg_match($pattern, $val)) {
+                        $_backend_failed[] = $key;
+                        continue;
+                    }
+                } else {
+                    // Если регулярка некорректна — логируем, но не блокируем форму
+                    error_log("Invalid regexp for field '{$key}': {$pattern_raw}");
+                }
+            }
+
+            // если всё прошло — добавляем в массив для записи
+            $_db_rows[ $_row['name'] ] = $val;
+        }
+    }
 }
 
 if ( ! empty( $_db_rows ) && empty( $_backend_failed ) ) {
-	$db = mysql_query( 'INSERT INTO users SET ' . db_set_array( $_db_rows ) );
+	$db = mysqli_query($mysqli, 'INSERT INTO users SET ' . db_set_array( $_db_rows ) );
 	$info_text3 = 'Анкету отримано!';
 } else {
+	if (!empty($_backend_failed)) {
+    echo '<pre>';
+    print_r($_backend_failed);
+    echo '</pre>';
+	}
 	$info_text3 = 'Сталася помилка!';
 }
 
